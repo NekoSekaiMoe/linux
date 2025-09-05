@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-3-Clause-Clear */
 /*
  * Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef ATH11K_CORE_H
@@ -174,7 +174,7 @@ struct ath11k_ext_irq_grp {
 	u64 timestamp;
 	bool napi_enabled;
 	struct napi_struct napi;
-	struct net_device napi_ndev;
+	struct net_device *napi_ndev;
 };
 
 enum ath11k_smbios_cc_type {
@@ -330,6 +330,9 @@ struct ath11k_chan_power_info {
 	s8 tx_power;
 };
 
+/* ath11k only deals with 160 MHz, so 8 subchannels */
+#define ATH11K_NUM_PWR_LEVELS	8
+
 /**
  * struct ath11k_reg_tpc_power_info - regulatory TPC power info
  * @is_psd_power: is PSD power or not
@@ -346,10 +349,10 @@ struct ath11k_reg_tpc_power_info {
 	u8 eirp_power;
 	enum wmi_reg_6ghz_ap_type ap_power_type;
 	u8 num_pwr_levels;
-	u8 reg_max[IEEE80211_MAX_NUM_PWR_LEVEL];
+	u8 reg_max[ATH11K_NUM_PWR_LEVELS];
 	u8 ap_constraint_power;
-	s8 tpe[IEEE80211_MAX_NUM_PWR_LEVEL];
-	struct ath11k_chan_power_info chan_power_info[IEEE80211_MAX_NUM_PWR_LEVEL];
+	s8 tpe[ATH11K_NUM_PWR_LEVELS];
+	struct ath11k_chan_power_info chan_power_info[ATH11K_NUM_PWR_LEVELS];
 };
 
 struct ath11k_vif {
@@ -396,6 +399,7 @@ struct ath11k_vif {
 	u8 bssid[ETH_ALEN];
 	struct cfg80211_bitrate_mask bitrate_mask;
 	struct delayed_work connection_loss_work;
+	struct work_struct bcn_tx_work;
 	int num_legacy_stations;
 	int rtscts_prot_mode;
 	int txpower;
@@ -403,11 +407,17 @@ struct ath11k_vif {
 	bool wpaie_present;
 	bool bcca_zero_sent;
 	bool do_not_send_tmpl;
-	struct ieee80211_chanctx_conf chanctx;
 	struct ath11k_arp_ns_offload arp_ns_offload;
 	struct ath11k_rekey_data rekey_data;
 
 	struct ath11k_reg_tpc_power_info reg_tpc_info;
+
+	/* Must be last - ends in a flexible-array member.
+	 *
+	 * FIXME: Driver should not copy struct ieee80211_chanctx_conf,
+	 * especially because it has a flexible array. Find a better way.
+	 */
+	struct ieee80211_chanctx_conf chanctx;
 };
 
 struct ath11k_vif_iter {

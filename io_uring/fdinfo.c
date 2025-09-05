@@ -50,9 +50,9 @@ static __cold int io_uring_show_cred(struct seq_file *m, unsigned int id,
  * Caller holds a reference to the file already, we don't need to do
  * anything else to get an extra reference.
  */
-__cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
+__cold void io_uring_show_fdinfo(struct seq_file *m, struct file *file)
 {
-	struct io_ring_ctx *ctx = f->private_data;
+	struct io_ring_ctx *ctx = file->private_data;
 	struct io_overflow_cqe *ocqe;
 	struct io_rings *r = ctx->rings;
 	struct rusage sq_usage;
@@ -177,9 +177,8 @@ __cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
 	seq_printf(m, "UserBufs:\t%u\n", ctx->nr_user_bufs);
 	for (i = 0; has_lock && i < ctx->nr_user_bufs; i++) {
 		struct io_mapped_ubuf *buf = ctx->user_bufs[i];
-		unsigned int len = buf->ubuf_end - buf->ubuf;
 
-		seq_printf(m, "%5u: 0x%llx/%u\n", i, buf->ubuf, len);
+		seq_printf(m, "%5u: 0x%llx/%u\n", i, buf->ubuf, buf->len);
 	}
 	if (has_lock && !xa_empty(&ctx->personalities)) {
 		unsigned long index;
@@ -221,7 +220,19 @@ __cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
 			   cqe->user_data, cqe->res, cqe->flags);
 
 	}
-
 	spin_unlock(&ctx->completion_lock);
+
+#ifdef CONFIG_NET_RX_BUSY_POLL
+	if (ctx->napi_enabled) {
+		seq_puts(m, "NAPI:\tenabled\n");
+		seq_printf(m, "napi_busy_poll_dt:\t%llu\n", ctx->napi_busy_poll_dt);
+		if (ctx->napi_prefer_busy_poll)
+			seq_puts(m, "napi_prefer_busy_poll:\ttrue\n");
+		else
+			seq_puts(m, "napi_prefer_busy_poll:\tfalse\n");
+	} else {
+		seq_puts(m, "NAPI:\tdisabled\n");
+	}
+#endif
 }
 #endif

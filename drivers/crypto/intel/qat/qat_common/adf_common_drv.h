@@ -56,7 +56,7 @@ int adf_service_register(struct service_hndl *service);
 int adf_service_unregister(struct service_hndl *service);
 
 int adf_dev_up(struct adf_accel_dev *accel_dev, bool init_config);
-int adf_dev_down(struct adf_accel_dev *accel_dev, bool cache_config);
+int adf_dev_down(struct adf_accel_dev *accel_dev);
 int adf_dev_restart(struct adf_accel_dev *accel_dev);
 
 void adf_devmgr_update_class_index(struct adf_hw_device_data *hw_data);
@@ -246,6 +246,16 @@ static inline void __iomem *adf_get_pmisc_base(struct adf_accel_dev *accel_dev)
 	pmisc = &GET_BARS(accel_dev)[hw_data->get_misc_bar_id(hw_data)];
 
 	return pmisc->virt_addr;
+}
+
+static inline void __iomem *adf_get_etr_base(struct adf_accel_dev *accel_dev)
+{
+	struct adf_hw_device_data *hw_data = accel_dev->hw_device;
+	struct adf_bar *etr;
+
+	etr = &GET_BARS(accel_dev)[hw_data->get_etr_bar_id(hw_data)];
+
+	return etr->virt_addr;
 }
 
 static inline void __iomem *adf_get_aram_base(struct adf_accel_dev *accel_dev)

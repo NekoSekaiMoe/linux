@@ -761,7 +761,6 @@ static void sve_init_header_from_task(struct user_sve_header *header,
 {
 	unsigned int vq;
 	bool active;
-	bool fpsimd_only;
 	enum vec_type task_type;
 
 	memset(header, 0, sizeof(*header));
@@ -777,12 +776,10 @@ static void sve_init_header_from_task(struct user_sve_header *header,
 	case ARM64_VEC_SVE:
 		if (test_tsk_thread_flag(target, TIF_SVE_VL_INHERIT))
 			header->flags |= SVE_PT_VL_INHERIT;
-		fpsimd_only = !test_tsk_thread_flag(target, TIF_SVE);
 		break;
 	case ARM64_VEC_SME:
 		if (test_tsk_thread_flag(target, TIF_SME_VL_INHERIT))
 			header->flags |= SVE_PT_VL_INHERIT;
-		fpsimd_only = false;
 		break;
 	default:
 		WARN_ON_ONCE(1);
@@ -790,7 +787,7 @@ static void sve_init_header_from_task(struct user_sve_header *header,
 	}
 
 	if (active) {
-		if (fpsimd_only) {
+		if (target->thread.fp_type == FP_STATE_FPSIMD) {
 			header->flags |= SVE_PT_REGS_FPSIMD;
 		} else {
 			header->flags |= SVE_PT_REGS_SVE;
@@ -1443,6 +1440,39 @@ static int tagged_addr_ctrl_set(struct task_struct *target, const struct
 }
 #endif
 
+#ifdef CONFIG_ARM64_POE
+static int poe_get(struct task_struct *target,
+		   const struct user_regset *regset,
+		   struct membuf to)
+{
+	if (!system_supports_poe())
+		return -EINVAL;
+
+	return membuf_write(&to, &target->thread.por_el0,
+			    sizeof(target->thread.por_el0));
+}
+
+static int poe_set(struct task_struct *target, const struct
+		   user_regset *regset, unsigned int pos,
+		   unsigned int count, const void *kbuf, const
+		   void __user *ubuf)
+{
+	int ret;
+	long ctrl;
+
+	if (!system_supports_poe())
+		return -EINVAL;
+
+	ret = user_regset_copyin(&pos, &count, &kbuf, &ubuf, &ctrl, 0, -1);
+	if (ret)
+		return ret;
+
+	target->thread.por_el0 = ctrl;
+
+	return 0;
+}
+#endif
+
 enum aarch64_regset {
 	REGSET_GPR,
 	REGSET_FPR,
@@ -1471,6 +1501,9 @@ enum aarch64_regset {
 #endif
 #ifdef CONFIG_ARM64_TAGGED_ADDR_ABI
 	REGSET_TAGGED_ADDR_CTRL,
+#endif
+#ifdef CONFIG_ARM64_POE
+	REGSET_POE
 #endif
 };
 
@@ -1629,6 +1662,16 @@ static const struct user_regset aarch64_regsets[] = {
 		.align = sizeof(long),
 		.regset_get = tagged_addr_ctrl_get,
 		.set = tagged_addr_ctrl_set,
+	},
+#endif
+#ifdef CONFIG_ARM64_POE
+	[REGSET_POE] = {
+		.core_note_type = NT_ARM_POE,
+		.n = 1,
+		.size = sizeof(long),
+		.align = sizeof(long),
+		.regset_get = poe_get,
+		.set = poe_set,
 	},
 #endif
 };

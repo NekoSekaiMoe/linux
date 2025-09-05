@@ -10,7 +10,7 @@
 #include <linux/perf_event.h>
 #include <linux/perf/arm_pmuv3.h>
 
-#define ARMV8_PMU_CYCLE_IDX		(ARMV8_PMU_MAX_COUNTERS - 1)
+#define KVM_ARMV8_PMU_MAX_COUNTERS	32
 
 #if IS_ENABLED(CONFIG_HW_PERF_EVENTS) && IS_ENABLED(CONFIG_KVM)
 struct kvm_pmc {
@@ -19,14 +19,14 @@ struct kvm_pmc {
 };
 
 struct kvm_pmu_events {
-	u32 events_host;
-	u32 events_guest;
+	u64 events_host;
+	u64 events_guest;
 };
 
 struct kvm_pmu {
 	struct irq_work overflow_work;
 	struct kvm_pmu_events events;
-	struct kvm_pmc pmc[ARMV8_PMU_MAX_COUNTERS];
+	struct kvm_pmc pmc[KVM_ARMV8_PMU_MAX_COUNTERS];
 	int irq_num;
 	bool created;
 	bool irq_level;
@@ -86,7 +86,7 @@ void kvm_vcpu_pmu_resync_el0(void);
  */
 #define kvm_pmu_update_vcpu_events(vcpu)				\
 	do {								\
-		if (!has_vhe() && kvm_vcpu_has_pmu(vcpu))		\
+		if (!has_vhe() && kvm_arm_support_pmu_v3())		\
 			vcpu->arch.pmu.events = *kvm_get_pmu_events();	\
 	} while (0)
 

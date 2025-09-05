@@ -32,6 +32,7 @@
 #ifdef CONFIG_SYSFS
 static const char fmt_hex[] = "%#x\n";
 static const char fmt_dec[] = "%d\n";
+static const char fmt_uint[] = "%u\n";
 static const char fmt_ulong[] = "%lu\n";
 static const char fmt_u64[] = "%llu\n";
 
@@ -235,7 +236,7 @@ static ssize_t speed_show(struct device *dev,
 	if (!rtnl_trylock())
 		return restart_syscall();
 
-	if (netif_running(netdev) && netif_device_present(netdev)) {
+	if (netif_running(netdev)) {
 		struct ethtool_link_ksettings cmd;
 
 		if (!__ethtool_get_link_ksettings(netdev, &cmd))
@@ -425,6 +426,9 @@ NETDEVICE_SHOW_RW(gro_flush_timeout, fmt_ulong);
 
 static int change_napi_defer_hard_irqs(struct net_device *dev, unsigned long val)
 {
+	if (val > S32_MAX)
+		return -ERANGE;
+
 	WRITE_ONCE(dev->napi_defer_hard_irqs, val);
 	return 0;
 }
@@ -438,7 +442,7 @@ static ssize_t napi_defer_hard_irqs_store(struct device *dev,
 
 	return netdev_store(dev, attr, buf, len, change_napi_defer_hard_irqs);
 }
-NETDEVICE_SHOW_RW(napi_defer_hard_irqs, fmt_dec);
+NETDEVICE_SHOW_RW(napi_defer_hard_irqs, fmt_uint);
 
 static ssize_t ifalias_store(struct device *dev, struct device_attribute *attr,
 			     const char *buf, size_t len)
@@ -605,13 +609,13 @@ static ssize_t threaded_show(struct device *dev,
 	struct net_device *netdev = to_net_dev(dev);
 	ssize_t ret = -EINVAL;
 
-	if (!rtnl_trylock())
-		return restart_syscall();
+	rcu_read_lock();
 
 	if (dev_isalive(netdev))
-		ret = sysfs_emit(buf, fmt_dec, netdev->threaded);
+		ret = sysfs_emit(buf, fmt_dec, READ_ONCE(netdev->threaded));
 
-	rtnl_unlock();
+	rcu_read_unlock();
+
 	return ret;
 }
 
@@ -1056,7 +1060,7 @@ static const void *rx_queue_namespace(const struct kobject *kobj)
 	struct device *dev = &queue->dev->dev;
 	const void *ns = NULL;
 
-	if (dev->class && dev->class->ns_type)
+	if (dev->class && dev->class->namespace)
 		ns = dev->class->namespace(dev);
 
 	return ns;
@@ -1419,7 +1423,7 @@ static ssize_t bql_show_stall_thrs(struct netdev_queue *queue, char *buf)
 {
 	struct dql *dql = &queue->dql;
 
-	return sprintf(buf, "%u\n", jiffies_to_msecs(dql->stall_thrs));
+	return sysfs_emit(buf, "%u\n", jiffies_to_msecs(dql->stall_thrs));
 }
 
 static ssize_t bql_set_stall_thrs(struct netdev_queue *queue,
@@ -1451,7 +1455,7 @@ static struct netdev_queue_attribute bql_stall_thrs_attribute __ro_after_init =
 
 static ssize_t bql_show_stall_max(struct netdev_queue *queue, char *buf)
 {
-	return sprintf(buf, "%u\n", READ_ONCE(queue->dql.stall_max));
+	return sysfs_emit(buf, "%u\n", READ_ONCE(queue->dql.stall_max));
 }
 
 static ssize_t bql_set_stall_max(struct netdev_queue *queue,
@@ -1468,7 +1472,7 @@ static ssize_t bql_show_stall_cnt(struct netdev_queue *queue, char *buf)
 {
 	struct dql *dql = &queue->dql;
 
-	return sprintf(buf, "%lu\n", dql->stall_cnt);
+	return sysfs_emit(buf, "%lu\n", dql->stall_cnt);
 }
 
 static struct netdev_queue_attribute bql_stall_cnt_attribute __ro_after_init =
@@ -1524,7 +1528,7 @@ static const struct attribute_group dql_group = {
 };
 #else
 /* Fake declaration, all the code using it should be dead */
-extern const struct attribute_group dql_group;
+static const struct attribute_group dql_group = {};
 #endif /* CONFIG_BQL */
 
 #ifdef CONFIG_XPS
@@ -1740,7 +1744,7 @@ static const void *netdev_queue_namespace(const struct kobject *kobj)
 	struct device *dev = &queue->dev->dev;
 	const void *ns = NULL;
 
-	if (dev->class && dev->class->ns_type)
+	if (dev->class && dev->class->namespace)
 		ns = dev->class->namespace(dev);
 
 	return ns;
@@ -1764,8 +1768,7 @@ static const struct kobj_type netdev_queue_ktype = {
 
 static bool netdev_uses_bql(const struct net_device *dev)
 {
-	if (dev->features & NETIF_F_LLTX ||
-	    dev->priv_flags & IFF_NO_QUEUE)
+	if (dev->lltx || (dev->priv_flags & IFF_NO_QUEUE))
 		return false;
 
 	return IS_ENABLED(CONFIG_BQL);
@@ -2028,7 +2031,7 @@ static void netdev_release(struct device *d)
 	 * device is dead and about to be freed.
 	 */
 	kfree(rcu_access_pointer(dev->ifalias));
-	netdev_freemem(dev);
+	kvfree(dev);
 }
 
 static const void *net_namespace(const struct device *d)
@@ -2046,7 +2049,7 @@ static void net_get_ownership(const struct device *d, kuid_t *uid, kgid_t *gid)
 	net_ns_get_ownership(net, uid, gid);
 }
 
-static struct class net_class __ro_after_init = {
+static const struct class net_class = {
 	.name = "net",
 	.dev_release = netdev_release,
 	.dev_groups = net_class_groups,

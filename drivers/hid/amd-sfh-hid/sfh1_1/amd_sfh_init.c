@@ -202,7 +202,7 @@ static int amd_sfh1_1_hid_client_init(struct amd_mp2_dev *privdata)
 	}
 
 	if (!cl_data->is_any_sensor_enabled) {
-		dev_warn(dev, "Failed to discover, sensors not enabled is %d\n",
+		dev_warn(dev, "No sensor registered, sensors not enabled is %d\n",
 			 cl_data->is_any_sensor_enabled);
 		rc = -EOPNOTSUPP;
 		goto cleanup;
@@ -226,6 +226,11 @@ static void amd_sfh_resume(struct amd_mp2_dev *mp2)
 	struct amdtp_cl_data *cl_data = mp2->cl_data;
 	struct amd_mp2_sensor_info info;
 	int i, status;
+
+	if (!cl_data->is_any_sensor_enabled) {
+		amd_sfh_clear_intr(mp2);
+		return;
+	}
 
 	for (i = 0; i < cl_data->num_hid_devices; i++) {
 		if (cl_data->sensor_sts[i] == SENSOR_DISABLED) {
@@ -251,6 +256,11 @@ static void amd_sfh_suspend(struct amd_mp2_dev *mp2)
 {
 	struct amdtp_cl_data *cl_data = mp2->cl_data;
 	int i, status;
+
+	if (!cl_data->is_any_sensor_enabled) {
+		amd_sfh_clear_intr(mp2);
+		return;
+	}
 
 	for (i = 0; i < cl_data->num_hid_devices; i++) {
 		if (cl_data->sensor_idx[i] != HPD_IDX &&
@@ -289,8 +299,8 @@ static void amd_sfh_set_ops(struct amd_mp2_dev *mp2)
 
 	sfh_interface_init(mp2);
 	mp2_ops = mp2->mp2_ops;
-	mp2_ops->clear_intr = amd_sfh_clear_intr_v2,
-	mp2_ops->init_intr = amd_sfh_irq_init_v2,
+	mp2_ops->clear_intr = amd_sfh_clear_intr_v2;
+	mp2_ops->init_intr = amd_sfh_irq_init_v2;
 	mp2_ops->suspend = amd_sfh_suspend;
 	mp2_ops->resume = amd_sfh_resume;
 	mp2_ops->remove = amd_mp2_pci_remove;
@@ -320,7 +330,7 @@ int amd_sfh1_1_init(struct amd_mp2_dev *mp2)
 
 	memcpy_fromio(&binfo, mp2->vsbase, sizeof(struct sfh_base_info));
 	if (binfo.sbase.fw_info.fw_ver == 0 || binfo.sbase.s_list.sl.sensors == 0) {
-		dev_dbg(dev, "failed to get sensors\n");
+		dev_dbg(dev, "No sensor registered\n");
 		return -EOPNOTSUPP;
 	}
 	dev_dbg(dev, "firmware version 0x%x\n", binfo.sbase.fw_info.fw_ver);
@@ -337,7 +347,8 @@ int amd_sfh1_1_init(struct amd_mp2_dev *mp2)
 	rc = amd_sfh1_1_hid_client_init(mp2);
 	if (rc) {
 		sfh_deinit_emp2();
-		dev_err(dev, "amd_sfh1_1_hid_client_init failed\n");
+		if ((rc != -ENODEV) && (rc != -EOPNOTSUPP))
+			dev_err(dev, "amd_sfh1_1_hid_client_init failed\n");
 		return rc;
 	}
 

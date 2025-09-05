@@ -125,8 +125,19 @@ struct s390_pxts_ctx {
 static inline int __paes_keyblob2pkey(struct key_blob *kb,
 				     struct pkey_protkey *pk)
 {
-	return pkey_keyblob2pkey(kb->key, kb->keylen,
-				 pk->protkey, &pk->len, &pk->type);
+	int i, ret = -EIO;
+
+	/* try three times in case of busy card */
+	for (i = 0; ret && i < 3; i++) {
+		if (ret == -EBUSY && in_task()) {
+			if (msleep_interruptible(1000))
+				return -EINTR;
+		}
+		ret = pkey_key2protkey(kb->key, kb->keylen,
+				       pk->protkey, &pk->len, &pk->type);
+	}
+
+	return ret;
 }
 
 static inline int __paes_convert_key(struct s390_paes_ctx *ctx)
@@ -791,7 +802,10 @@ out_err:
 module_init(paes_s390_init);
 module_exit(paes_s390_fini);
 
-MODULE_ALIAS_CRYPTO("paes");
+MODULE_ALIAS_CRYPTO("ecb(paes)");
+MODULE_ALIAS_CRYPTO("cbc(paes)");
+MODULE_ALIAS_CRYPTO("ctr(paes)");
+MODULE_ALIAS_CRYPTO("xts(paes)");
 
 MODULE_DESCRIPTION("Rijndael (AES) Cipher Algorithm with protected keys");
 MODULE_LICENSE("GPL");

@@ -21,11 +21,11 @@ properties:
 
   interrupts:
     minItems: 1
-    maxItems: 8
+    maxItems: 9
 
   interrupt-names:
     minItems: 1
-    maxItems: 8
+    maxItems: 9
 
   iommu-map:
     minItems: 1
@@ -78,6 +78,9 @@ properties:
     description: GPIO controlled connection to WAKE# signal
     maxItems: 1
 
+  vddpe-3v3-supply:
+    description: PCIe endpoint power supply
+
 required:
   - reg
   - reg-names
@@ -95,6 +98,6 @@ anyOf:
       - msi-map
 
 allOf:
-  - $ref: /schemas/pci/pci-bus.yaml#
+  - $ref: /schemas/pci/pci-host-bridge.yaml#
 
 additionalProperties: true

@@ -136,7 +136,7 @@ enum {
 	XFS_QM_TRANS_PRJ,
 	XFS_QM_TRANS_DQTYPES
 };
-#define XFS_QM_TRANS_MAXDQS		2
+#define XFS_QM_TRANS_MAXDQS		5
 struct xfs_dquot_acct {
 	struct xfs_dqtrx	dqs[XFS_QM_TRANS_DQTYPES][XFS_QM_TRANS_MAXDQS];
 };
@@ -183,5 +183,8 @@ xfs_get_defquota(struct xfs_quotainfo *qi, xfs_dqtype_t type)
 		return NULL;
 	}
 }
+
+int xfs_qm_qino_load(struct xfs_mount *mp, xfs_dqtype_t type,
+		struct xfs_inode **ipp);
 
 #endif /* __XFS_QM_H__ */

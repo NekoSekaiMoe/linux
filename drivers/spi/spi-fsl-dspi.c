@@ -1003,9 +1003,11 @@ static int dspi_setup(struct spi_device *spi)
 	u32 cs_sck_delay = 0, sck_cs_delay = 0;
 	struct fsl_dspi_platform_data *pdata;
 	unsigned char pasc = 0, asc = 0;
+	struct gpio_desc *gpio_cs;
 	struct chip_data *chip;
 	unsigned long clkrate;
 	bool cs = true;
+	int val;
 
 	/* Only alloc on first setup */
 	chip = spi_get_ctldata(spi);
@@ -1018,11 +1020,19 @@ static int dspi_setup(struct spi_device *spi)
 	pdata = dev_get_platdata(&dspi->pdev->dev);
 
 	if (!pdata) {
-		of_property_read_u32(spi->dev.of_node, "fsl,spi-cs-sck-delay",
-				     &cs_sck_delay);
+		val = spi_delay_to_ns(&spi->cs_setup, NULL);
+		cs_sck_delay = val >= 0 ? val : 0;
+		if (!cs_sck_delay)
+			of_property_read_u32(spi->dev.of_node,
+					     "fsl,spi-cs-sck-delay",
+					     &cs_sck_delay);
 
-		of_property_read_u32(spi->dev.of_node, "fsl,spi-sck-cs-delay",
-				     &sck_cs_delay);
+		val = spi_delay_to_ns(&spi->cs_hold, NULL);
+		sck_cs_delay =  val >= 0 ? val : 0;
+		if (!sck_cs_delay)
+			of_property_read_u32(spi->dev.of_node,
+					     "fsl,spi-sck-cs-delay",
+					     &sck_cs_delay);
 	} else {
 		cs_sck_delay = pdata->cs_sck_delay;
 		sck_cs_delay = pdata->sck_cs_delay;
@@ -1068,7 +1078,10 @@ static int dspi_setup(struct spi_device *spi)
 			chip->ctar_val |= SPI_CTAR_LSBFE;
 	}
 
-	gpiod_direction_output(spi_get_csgpiod(spi, 0), false);
+	gpio_cs = spi_get_csgpiod(spi, 0);
+	if (gpio_cs)
+		gpiod_direction_output(gpio_cs, false);
+
 	dspi_deassert_cs(spi, &cs);
 
 	spi_set_ctldata(spi, chip);
@@ -1458,7 +1471,6 @@ static void dspi_shutdown(struct platform_device *pdev)
 static struct platform_driver fsl_dspi_driver = {
 	.driver.name		= DRIVER_NAME,
 	.driver.of_match_table	= fsl_dspi_dt_ids,
-	.driver.owner		= THIS_MODULE,
 	.driver.pm		= &dspi_pm,
 	.probe			= dspi_probe,
 	.remove_new		= dspi_remove,

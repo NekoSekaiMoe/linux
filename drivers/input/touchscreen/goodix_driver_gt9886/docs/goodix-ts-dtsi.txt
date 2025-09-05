@@ -53,4 +53,4 @@ goodix-gtx8@5d {
 	goodix,panel-max-y = <500>;
 	goodix,panel-max-w = <255>;
 };
-+
+

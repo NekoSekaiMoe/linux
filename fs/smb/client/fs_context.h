@@ -145,6 +145,7 @@ enum cifs_param {
 	Opt_source,
 	Opt_user,
 	Opt_pass,
+	Opt_pass2,
 	Opt_ip,
 	Opt_domain,
 	Opt_srcaddr,
@@ -164,6 +165,8 @@ enum cifs_param {
 };
 
 struct smb3_fs_context {
+	bool forceuid_specified;
+	bool forcegid_specified;
 	bool uid_specified;
 	bool cruid_specified;
 	bool gid_specified;
@@ -177,6 +180,7 @@ struct smb3_fs_context {
 
 	char *username;
 	char *password;
+	char *password2;
 	char *domainname;
 	char *source;
 	char *server_hostname;
@@ -256,7 +260,7 @@ struct smb3_fs_context {
 	unsigned int min_offload;
 	unsigned int retrans;
 	bool sockopt_tcp_nodelay:1;
-	/* attribute cache timemout for files and directories in jiffies */
+	/* attribute cache timeout for files and directories in jiffies */
 	unsigned long acregmax;
 	unsigned long acdirmax;
 	/* timeout for deferred close of files in jiffies */
@@ -280,6 +284,7 @@ struct smb3_fs_context {
 	struct cifs_ses *dfs_root_ses;
 	bool dfs_automount:1; /* set for dfs automount only */
 	enum cifs_reparse_type reparse_type;
+	bool dfs_conn:1; /* set for dfs mounts */
 };
 
 extern const struct fs_parameter_spec smb3_fs_parameters[];
@@ -303,5 +308,17 @@ extern void smb3_update_mnt_flags(struct cifs_sb_info *cifs_sb);
 #define SMB3_DEF_DCLOSETIMEO (1 * HZ) /* even 1 sec enough to help eg open/write/close/open/read */
 #define MAX_CACHED_FIDS 16
 extern char *cifs_sanitize_prepath(char *prepath, gfp_t gfp);
+
+extern struct mutex cifs_mount_mutex;
+
+static inline void cifs_mount_lock(void)
+{
+	mutex_lock(&cifs_mount_mutex);
+}
+
+static inline void cifs_mount_unlock(void)
+{
+	mutex_unlock(&cifs_mount_mutex);
+}
 
 #endif

@@ -235,9 +235,9 @@ static long ioctl_file_clone(struct file *dst_file, unsigned long srcfd,
 	loff_t cloned;
 	int ret;
 
-	if (!src_file.file)
+	if (!fd_file(src_file))
 		return -EBADF;
-	cloned = vfs_clone_file_range(src_file.file, off, dst_file, destoff,
+	cloned = vfs_clone_file_range(fd_file(src_file), off, dst_file, destoff,
 				      olen, 0);
 	if (cloned < 0)
 		ret = cloned;
@@ -769,7 +769,7 @@ static int ioctl_getfsuuid(struct file *file, void __user *argp)
 	struct fsuuid2 u = { .len = sb->s_uuid_len, };
 
 	if (!sb->s_uuid_len)
-		return -ENOIOCTLCMD;
+		return -ENOTTY;
 
 	memcpy(&u.uuid[0], &sb->s_uuid, sb->s_uuid_len);
 
@@ -781,7 +781,7 @@ static int ioctl_get_fs_sysfs_path(struct file *file, void __user *argp)
 	struct super_block *sb = file_inode(file)->i_sb;
 
 	if (!strlen(sb->s_sysfs_name))
-		return -ENOIOCTLCMD;
+		return -ENOTTY;
 
 	struct fs_sysfs_path u = {};
 
@@ -796,6 +796,9 @@ static int ioctl_get_fs_sysfs_path(struct file *file, void __user *argp)
  *
  * When you add any new common ioctls to the switches above and below,
  * please ensure they have compatible arguments in compat mode.
+ *
+ * The LSM mailing list should also be notified of any command additions or
+ * changes, as specific LSMs may be affected.
  */
 static int do_vfs_ioctl(struct file *filp, unsigned int fd,
 			unsigned int cmd, unsigned long arg)
@@ -892,16 +895,16 @@ SYSCALL_DEFINE3(ioctl, unsigned int, fd, unsigned int, cmd, unsigned long, arg)
 	struct fd f = fdget(fd);
 	int error;
 
-	if (!f.file)
+	if (!fd_file(f))
 		return -EBADF;
 
-	error = security_file_ioctl(f.file, cmd, arg);
+	error = security_file_ioctl(fd_file(f), cmd, arg);
 	if (error)
 		goto out;
 
-	error = do_vfs_ioctl(f.file, fd, cmd, arg);
+	error = do_vfs_ioctl(fd_file(f), fd, cmd, arg);
 	if (error == -ENOIOCTLCMD)
-		error = vfs_ioctl(f.file, cmd, arg);
+		error = vfs_ioctl(fd_file(f), cmd, arg);
 
 out:
 	fdput(f);
@@ -950,32 +953,32 @@ COMPAT_SYSCALL_DEFINE3(ioctl, unsigned int, fd, unsigned int, cmd,
 	struct fd f = fdget(fd);
 	int error;
 
-	if (!f.file)
+	if (!fd_file(f))
 		return -EBADF;
 
-	error = security_file_ioctl_compat(f.file, cmd, arg);
+	error = security_file_ioctl_compat(fd_file(f), cmd, arg);
 	if (error)
 		goto out;
 
 	switch (cmd) {
 	/* FICLONE takes an int argument, so don't use compat_ptr() */
 	case FICLONE:
-		error = ioctl_file_clone(f.file, arg, 0, 0, 0);
+		error = ioctl_file_clone(fd_file(f), arg, 0, 0, 0);
 		break;
 
 #if defined(CONFIG_X86_64)
 	/* these get messy on amd64 due to alignment differences */
 	case FS_IOC_RESVSP_32:
 	case FS_IOC_RESVSP64_32:
-		error = compat_ioctl_preallocate(f.file, 0, compat_ptr(arg));
+		error = compat_ioctl_preallocate(fd_file(f), 0, compat_ptr(arg));
 		break;
 	case FS_IOC_UNRESVSP_32:
 	case FS_IOC_UNRESVSP64_32:
-		error = compat_ioctl_preallocate(f.file, FALLOC_FL_PUNCH_HOLE,
+		error = compat_ioctl_preallocate(fd_file(f), FALLOC_FL_PUNCH_HOLE,
 				compat_ptr(arg));
 		break;
 	case FS_IOC_ZERO_RANGE_32:
-		error = compat_ioctl_preallocate(f.file, FALLOC_FL_ZERO_RANGE,
+		error = compat_ioctl_preallocate(fd_file(f), FALLOC_FL_ZERO_RANGE,
 				compat_ptr(arg));
 		break;
 #endif
@@ -995,13 +998,13 @@ COMPAT_SYSCALL_DEFINE3(ioctl, unsigned int, fd, unsigned int, cmd,
 	 * argument.
 	 */
 	default:
-		error = do_vfs_ioctl(f.file, fd, cmd,
+		error = do_vfs_ioctl(fd_file(f), fd, cmd,
 				     (unsigned long)compat_ptr(arg));
 		if (error != -ENOIOCTLCMD)
 			break;
 
-		if (f.file->f_op->compat_ioctl)
-			error = f.file->f_op->compat_ioctl(f.file, cmd, arg);
+		if (fd_file(f)->f_op->compat_ioctl)
+			error = fd_file(f)->f_op->compat_ioctl(fd_file(f), cmd, arg);
 		if (error == -ENOIOCTLCMD)
 			error = -ENOTTY;
 		break;

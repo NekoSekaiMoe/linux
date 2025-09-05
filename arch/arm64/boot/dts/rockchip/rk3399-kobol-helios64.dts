@@ -12,7 +12,6 @@
 
 /dts-v1/;
 #include "rk3399.dtsi"
-#include "rk3399-opp.dtsi"
 
 / {
 	model = "Kobol Helios64";
@@ -611,7 +610,7 @@
 				#size-cells = <0>;
 
 				interface@0 {	/* interface 0 of configuration 1 */
-					compatible = "usbbda,8156.config1.0";
+					compatible = "usbifbda,8156.config1.0";
 					reg = <0 1>;
 				};
 			};

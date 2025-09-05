@@ -33,6 +33,8 @@
 
 #define NFSD_MAY_64BIT_COOKIE		0x1000 /* 64 bit readdir cookies for >= NFSv3 */
 
+#define NFSD_MAY_LOCALIO		0x2000 /* for tracing, reflects when localio used */
+
 #define NFSD_MAY_CREATE		(NFSD_MAY_EXEC|NFSD_MAY_WRITE)
 #define NFSD_MAY_REMOVE		(NFSD_MAY_EXEC|NFSD_MAY_WRITE|NFSD_MAY_TRUNC)
 
@@ -58,6 +60,14 @@ static inline void nfsd_attrs_free(struct nfsd_attrs *attrs)
 {
 	posix_acl_release(attrs->na_pacl);
 	posix_acl_release(attrs->na_dpacl);
+}
+
+static inline bool nfsd_attrs_valid(struct nfsd_attrs *attrs)
+{
+	struct iattr *iap = attrs->na_iattr;
+
+	return (iap->ia_valid || (attrs->na_seclabel &&
+		attrs->na_seclabel->len));
 }
 
 __be32		nfserrno (int errno);
@@ -145,8 +155,8 @@ __be32		nfsd_readdir(struct svc_rqst *, struct svc_fh *,
 __be32		nfsd_statfs(struct svc_rqst *, struct svc_fh *,
 				struct kstatfs *, int access);
 
-__be32		nfsd_permission(struct svc_rqst *, struct svc_export *,
-				struct dentry *, int);
+__be32		nfsd_permission(struct svc_cred *cred, struct svc_export *exp,
+				struct dentry *dentry, int acc);
 
 void		nfsd_filp_close(struct file *fp);
 

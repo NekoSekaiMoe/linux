@@ -282,6 +282,29 @@ int apmf_update_fan_idx(struct amd_pmf_dev *pdev, bool manual, u32 idx)
 	return 0;
 }
 
+static int apmf_notify_smart_pc_update(struct amd_pmf_dev *pdev, u32 val, u32 preq, u32 index)
+{
+	struct amd_pmf_notify_smart_pc_update args;
+	struct acpi_buffer params;
+	union acpi_object *info;
+
+	args.size = sizeof(args);
+	args.pending_req = preq;
+	args.custom_bios[index] = val;
+
+	params.length = sizeof(args);
+	params.pointer = &args;
+
+	info = apmf_if_call(pdev, APMF_FUNC_NOTIFY_SMART_PC_UPDATES, &params);
+	if (!info)
+		return -EIO;
+
+	kfree(info);
+	dev_dbg(pdev->dev, "Notify smart pc update, val: %u\n", val);
+
+	return 0;
+}
+
 int apmf_get_auto_mode_def(struct amd_pmf_dev *pdev, struct apmf_auto_mode *data)
 {
 	return apmf_if_call_store_buffer(pdev, APMF_FUNC_AUTO_MODE, data, sizeof(*data));
@@ -343,7 +366,10 @@ static int apmf_if_verify_interface(struct amd_pmf_dev *pdev)
 	if (err)
 		return err;
 
-	pdev->supported_func = output.supported_functions;
+	/* only set if not already set by a quirk */
+	if (!pdev->supported_func)
+		pdev->supported_func = output.supported_functions;
+
 	dev_dbg(pdev->dev, "supported functions:0x%x notifications:0x%x version:%u\n",
 		output.supported_functions, output.notification_mask, output.version);
 
@@ -437,11 +463,19 @@ int apmf_check_smart_pc(struct amd_pmf_dev *pmf_dev)
 
 	status = acpi_walk_resources(ahandle, METHOD_NAME__CRS, apmf_walk_resources, pmf_dev);
 	if (ACPI_FAILURE(status)) {
-		dev_err(pmf_dev->dev, "acpi_walk_resources failed :%d\n", status);
+		dev_dbg(pmf_dev->dev, "acpi_walk_resources failed :%d\n", status);
 		return -EINVAL;
 	}
 
 	return 0;
+}
+
+int amd_pmf_smartpc_apply_bios_output(struct amd_pmf_dev *dev, u32 val, u32 preq, u32 idx)
+{
+	if (!is_apmf_func_supported(dev, APMF_FUNC_NOTIFY_SMART_PC_UPDATES))
+		return -EINVAL;
+
+	return apmf_notify_smart_pc_update(dev, val, preq, idx);
 }
 
 void apmf_acpi_deinit(struct amd_pmf_dev *pmf_dev)

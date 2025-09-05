@@ -28,7 +28,7 @@
 #include <linux/input/mt.h>
 #include <linux/input.h>
 
-#define TS_DT_COMPATIBLE				"goodix,gt9889"
+#define TS_DT_COMPATIBLE				"goodix,gt9886"
 #define TS_DRIVER_NAME					"goodix_i2c"
 #define I2C_MAX_TRANSFER_SIZE			256
 #define TS_ADDR_LENGTH					2

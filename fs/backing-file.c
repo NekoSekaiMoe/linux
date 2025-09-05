@@ -52,12 +52,35 @@ struct file *backing_file_open(const struct path *user_path, int flags,
 }
 EXPORT_SYMBOL_GPL(backing_file_open);
 
+struct file *backing_tmpfile_open(const struct path *user_path, int flags,
+				  const struct path *real_parentpath,
+				  umode_t mode, const struct cred *cred)
+{
+	struct mnt_idmap *real_idmap = mnt_idmap(real_parentpath->mnt);
+	struct file *f;
+	int error;
+
+	f = alloc_empty_backing_file(flags, cred);
+	if (IS_ERR(f))
+		return f;
+
+	path_get(user_path);
+	*backing_file_user_path(f) = *user_path;
+	error = vfs_tmpfile(real_idmap, real_parentpath, f, mode);
+	if (error) {
+		fput(f);
+		f = ERR_PTR(error);
+	}
+	return f;
+}
+EXPORT_SYMBOL(backing_tmpfile_open);
+
 struct backing_aio {
 	struct kiocb iocb;
 	refcount_t ref;
 	struct kiocb *orig_iocb;
 	/* used for aio completion */
-	void (*end_write)(struct file *);
+	void (*end_write)(struct file *, loff_t, ssize_t);
 	struct work_struct work;
 	long res;
 };
@@ -86,7 +109,7 @@ static void backing_aio_cleanup(struct backing_aio *aio, long res)
 	struct kiocb *orig_iocb = aio->orig_iocb;
 
 	if (aio->end_write)
-		aio->end_write(orig_iocb->ki_filp);
+		aio->end_write(orig_iocb->ki_filp, iocb->ki_pos, res);
 
 	orig_iocb->ki_pos = iocb->ki_pos;
 	backing_aio_put(aio);
@@ -216,7 +239,7 @@ ssize_t backing_file_write_iter(struct file *file, struct iov_iter *iter,
 
 		ret = vfs_iter_write(file, iter, &iocb->ki_pos, rwf);
 		if (ctx->end_write)
-			ctx->end_write(ctx->user_file);
+			ctx->end_write(ctx->user_file, iocb->ki_pos, ret);
 	} else {
 		struct backing_aio *aio;
 
@@ -280,18 +303,21 @@ ssize_t backing_file_splice_write(struct pipe_inode_info *pipe,
 	if (WARN_ON_ONCE(!(out->f_mode & FMODE_BACKING)))
 		return -EIO;
 
+	if (!out->f_op->splice_write)
+		return -EINVAL;
+
 	ret = file_remove_privs(ctx->user_file);
 	if (ret)
 		return ret;
 
 	old_cred = override_creds(ctx->cred);
 	file_start_write(out);
-	ret = iter_file_splice_write(pipe, out, ppos, len, flags);
+	ret = out->f_op->splice_write(pipe, out, ppos, len, flags);
 	file_end_write(out);
 	revert_creds(old_cred);
 
 	if (ctx->end_write)
-		ctx->end_write(ctx->user_file);
+		ctx->end_write(ctx->user_file, ppos ? *ppos : 0, ret);
 
 	return ret;
 }

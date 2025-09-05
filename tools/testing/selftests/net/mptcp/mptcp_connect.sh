@@ -147,7 +147,7 @@ cleanup()
 
 mptcp_lib_check_mptcp
 mptcp_lib_check_kallsyms
-mptcp_lib_check_tools ip
+mptcp_lib_check_tools ip tc
 
 sin=$(mktemp)
 sout=$(mktemp)
@@ -259,6 +259,15 @@ check_mptcp_disabled()
 	mptcp_lib_ns_init disabled_ns
 
 	print_larger_title "New MPTCP socket can be blocked via sysctl"
+
+	# mainly to cover more code
+	if ! ip netns exec ${disabled_ns} sysctl net.mptcp >/dev/null; then
+		mptcp_lib_pr_fail "not able to list net.mptcp sysctl knobs"
+		mptcp_lib_result_fail "not able to list net.mptcp sysctl knobs"
+		ret=${KSFT_FAIL}
+		return 1
+	fi
+
 	# net.mptcp.enabled should be enabled by default
 	if [ "$(ip netns exec ${disabled_ns} sysctl net.mptcp.enabled | awk '{ print $3 }')" -ne 1 ]; then
 		mptcp_lib_pr_fail "net.mptcp.enabled sysctl is not 1 by default"
@@ -345,9 +354,11 @@ do_transfer()
 
 	local addr_port
 	addr_port=$(printf "%s:%d" ${connect_addr} ${port})
-	local result_msg
-	result_msg="$(printf "%.3s %-5s -> %.3s (%-20s) %-5s" ${connector_ns} ${cl_proto} ${listener_ns} ${addr_port} ${srv_proto})"
-	mptcp_lib_print_title "${result_msg}"
+	local pretty_title
+	pretty_title="$(printf "%.3s %-5s -> %.3s (%-20s) %-5s" ${connector_ns} ${cl_proto} ${listener_ns} ${addr_port} ${srv_proto})"
+	mptcp_lib_print_title "${pretty_title}"
+
+	local tap_title="${connector_ns:0:3} ${cl_proto} -> ${listener_ns:0:3} (${addr_port}) ${srv_proto}"
 
 	if $capture; then
 		local capuser
@@ -383,12 +394,14 @@ do_transfer()
 	local stat_cookierx_last
 	local stat_csum_err_s
 	local stat_csum_err_c
+	local stat_tcpfb_last_l
 	stat_synrx_last_l=$(mptcp_lib_get_counter "${listener_ns}" "MPTcpExtMPCapableSYNRX")
 	stat_ackrx_last_l=$(mptcp_lib_get_counter "${listener_ns}" "MPTcpExtMPCapableACKRX")
 	stat_cookietx_last=$(mptcp_lib_get_counter "${listener_ns}" "TcpExtSyncookiesSent")
 	stat_cookierx_last=$(mptcp_lib_get_counter "${listener_ns}" "TcpExtSyncookiesRecv")
 	stat_csum_err_s=$(mptcp_lib_get_counter "${listener_ns}" "MPTcpExtDataCsumErr")
 	stat_csum_err_c=$(mptcp_lib_get_counter "${connector_ns}" "MPTcpExtDataCsumErr")
+	stat_tcpfb_last_l=$(mptcp_lib_get_counter "${listener_ns}" "MPTcpExtMPCapableFallbackACK")
 
 	timeout ${timeout_test} \
 		ip netns exec ${listener_ns} \
@@ -429,7 +442,6 @@ do_transfer()
 
 	local duration
 	duration=$((stop-start))
-	result_msg+=" # time=${duration}ms"
 	printf "(duration %05sms) " "${duration}"
 	if [ ${rets} -ne 0 ] || [ ${retc} -ne 0 ]; then
 		mptcp_lib_pr_fail "client exit code $retc, server $rets"
@@ -442,7 +454,7 @@ do_transfer()
 
 		echo
 		cat "$capout"
-		mptcp_lib_result_fail "${TEST_GROUP}: ${result_msg}"
+		mptcp_lib_result_fail "${TEST_GROUP}: ${tap_title}"
 		return 1
 	fi
 
@@ -457,11 +469,13 @@ do_transfer()
 	local stat_cookietx_now
 	local stat_cookierx_now
 	local stat_ooo_now
+	local stat_tcpfb_now_l
 	stat_synrx_now_l=$(mptcp_lib_get_counter "${listener_ns}" "MPTcpExtMPCapableSYNRX")
 	stat_ackrx_now_l=$(mptcp_lib_get_counter "${listener_ns}" "MPTcpExtMPCapableACKRX")
 	stat_cookietx_now=$(mptcp_lib_get_counter "${listener_ns}" "TcpExtSyncookiesSent")
 	stat_cookierx_now=$(mptcp_lib_get_counter "${listener_ns}" "TcpExtSyncookiesRecv")
 	stat_ooo_now=$(mptcp_lib_get_counter "${listener_ns}" "TcpExtTCPOFOQueue")
+	stat_tcpfb_now_l=$(mptcp_lib_get_counter "${listener_ns}" "MPTcpExtMPCapableFallbackACK")
 
 	expect_synrx=$((stat_synrx_last_l))
 	expect_ackrx=$((stat_ackrx_last_l))
@@ -508,6 +522,11 @@ do_transfer()
 		fi
 	fi
 
+	if [ ${stat_ooo_now} -eq 0 ] && [ ${stat_tcpfb_last_l} -ne ${stat_tcpfb_now_l} ]; then
+		mptcp_lib_pr_fail "unexpected fallback to TCP"
+		rets=1
+	fi
+
 	if [ $cookies -eq 2 ];then
 		if [ $stat_cookietx_last -ge $stat_cookietx_now ] ;then
 			extra+=" WARN: CookieSent: did not advance"
@@ -535,12 +554,12 @@ do_transfer()
 
 	if [ $retc -eq 0 ] && [ $rets -eq 0 ]; then
 		mptcp_lib_pr_ok "${extra:1}"
-		mptcp_lib_result_pass "${TEST_GROUP}: ${result_msg}"
+		mptcp_lib_result_pass "${TEST_GROUP}: ${tap_title}"
 	else
 		if [ -n "${extra}" ]; then
 			mptcp_lib_print_warn "${extra:1}"
 		fi
-		mptcp_lib_result_fail "${TEST_GROUP}: ${result_msg}"
+		mptcp_lib_result_fail "${TEST_GROUP}: ${tap_title}"
 	fi
 
 	cat "$capout"
@@ -838,6 +857,8 @@ stop_if_error()
 
 make_file "$cin" "client"
 make_file "$sin" "server"
+
+mptcp_lib_subtests_last_ts_reset
 
 check_mptcp_disabled
 

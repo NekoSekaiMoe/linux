@@ -173,6 +173,7 @@ enum kx_chipset {
 	KXCJ91008,
 	KXTJ21009,
 	KXTF9,
+	KX0221020,
 	KX0231025,
 	KX_MAX_CHIPS /* this must be last */
 };
@@ -580,8 +581,8 @@ static int kxcjk1013_chip_init(struct kxcjk1013_data *data)
 		return ret;
 	}
 
-	/* On KX023, route all used interrupts to INT1 for now */
-	if (data->chipset == KX0231025 && data->client->irq > 0) {
+	/* On KX023 and KX022, route all used interrupts to INT1 for now */
+	if ((data->chipset == KX0231025 || data->chipset == KX0221020) && data->client->irq > 0) {
 		ret = i2c_smbus_write_byte_data(data->client, KX023_REG_INC4,
 						KX023_REG_INC4_DRDY1 |
 						KX023_REG_INC4_WUFI1);
@@ -635,84 +636,6 @@ static int kxcjk1013_set_power_state(struct kxcjk1013_data *data, bool on)
 
 	return 0;
 }
-
-#ifdef CONFIG_ACPI
-static bool kxj_acpi_orientation(struct device *dev,
-				 struct iio_mount_matrix *orientation)
-{
-	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
-	struct acpi_device *adev = ACPI_COMPANION(dev);
-	char *str;
-	union acpi_object *obj, *elements;
-	acpi_status status;
-	int i, j, val[3];
-	bool ret = false;
-
-	if (!acpi_has_method(adev->handle, "ROTM"))
-		return false;
-
-	status = acpi_evaluate_object(adev->handle, "ROTM", NULL, &buffer);
-	if (ACPI_FAILURE(status)) {
-		dev_err(dev, "Failed to get ACPI mount matrix: %d\n", status);
-		return false;
-	}
-
-	obj = buffer.pointer;
-	if (obj->type != ACPI_TYPE_PACKAGE || obj->package.count != 3) {
-		dev_err(dev, "Unknown ACPI mount matrix package format\n");
-		goto out_free_buffer;
-	}
-
-	elements = obj->package.elements;
-	for (i = 0; i < 3; i++) {
-		if (elements[i].type != ACPI_TYPE_STRING) {
-			dev_err(dev, "Unknown ACPI mount matrix element format\n");
-			goto out_free_buffer;
-		}
-
-		str = elements[i].string.pointer;
-		if (sscanf(str, "%d %d %d", &val[0], &val[1], &val[2]) != 3) {
-			dev_err(dev, "Incorrect ACPI mount matrix string format\n");
-			goto out_free_buffer;
-		}
-
-		for (j = 0; j < 3; j++) {
-			switch (val[j]) {
-			case -1: str = "-1"; break;
-			case 0:  str = "0";  break;
-			case 1:  str = "1";  break;
-			default:
-				dev_err(dev, "Invalid value in ACPI mount matrix: %d\n", val[j]);
-				goto out_free_buffer;
-			}
-			orientation->rotation[i * 3 + j] = str;
-		}
-	}
-
-	ret = true;
-
-out_free_buffer:
-	kfree(buffer.pointer);
-	return ret;
-}
-
-static bool kxj1009_apply_acpi_orientation(struct device *dev,
-					  struct iio_mount_matrix *orientation)
-{
-	struct acpi_device *adev = ACPI_COMPANION(dev);
-
-	if (adev && acpi_dev_hid_uid_match(adev, "KIOX000A", NULL))
-		return kxj_acpi_orientation(dev, orientation);
-
-	return false;
-}
-#else
-static bool kxj1009_apply_acpi_orientation(struct device *dev,
-					  struct iio_mount_matrix *orientation)
-{
-	return false;
-}
-#endif
 
 static int kxcjk1013_chip_update_thresholds(struct kxcjk1013_data *data)
 {
@@ -1544,7 +1467,7 @@ static int kxcjk1013_probe(struct i2c_client *client)
 	} else {
 		data->active_high_intr = true; /* default polarity */
 
-		if (!kxj1009_apply_acpi_orientation(&client->dev, &data->orientation)) {
+		if (!iio_read_acpi_mount_matrix(&client->dev, &data->orientation, "ROTM")) {
 			ret = iio_read_mount_matrix(&client->dev, &data->orientation);
 			if (ret)
 				return ret;
@@ -1585,6 +1508,7 @@ static int kxcjk1013_probe(struct i2c_client *client)
 	case KXTF9:
 		data->regs = &kxtf9_regs;
 		break;
+	case KX0221020:
 	case KX0231025:
 		data->regs = &kx0231025_regs;
 		break;
@@ -1790,6 +1714,7 @@ static const struct i2c_device_id kxcjk1013_id[] = {
 	{"kxcj91008", KXCJ91008},
 	{"kxtj21009", KXTJ21009},
 	{"kxtf9",     KXTF9},
+	{"kx022-1020", KX0221020},
 	{"kx023-1025", KX0231025},
 	{"SMO8500",   KXCJ91008},
 	{}
@@ -1802,6 +1727,7 @@ static const struct of_device_id kxcjk1013_of_match[] = {
 	{ .compatible = "kionix,kxcj91008", },
 	{ .compatible = "kionix,kxtj21009", },
 	{ .compatible = "kionix,kxtf9", },
+	{ .compatible = "kionix,kx022-1020", },
 	{ .compatible = "kionix,kx023-1025", },
 	{ }
 };

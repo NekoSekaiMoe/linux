@@ -64,15 +64,15 @@ EXPORT_SYMBOL(jiffies_64);
 
 /*
  * The timer wheel has LVL_DEPTH array levels. Each level provides an array of
- * LVL_SIZE buckets. Each level is driven by its own clock and therefor each
+ * LVL_SIZE buckets. Each level is driven by its own clock and therefore each
  * level has a different granularity.
  *
- * The level granularity is:		LVL_CLK_DIV ^ lvl
+ * The level granularity is:		LVL_CLK_DIV ^ level
  * The level clock frequency is:	HZ / (LVL_CLK_DIV ^ level)
  *
  * The array level of a newly armed timer depends on the relative expiry
  * time. The farther the expiry time is away the higher the array level and
- * therefor the granularity becomes.
+ * therefore the granularity becomes.
  *
  * Contrary to the original timer wheel implementation, which aims for 'exact'
  * expiry of the timers, this implementation removes the need for recascading
@@ -207,7 +207,7 @@ EXPORT_SYMBOL(jiffies_64);
  * struct timer_base - Per CPU timer base (number of base depends on config)
  * @lock:		Lock protecting the timer_base
  * @running_timer:	When expiring timers, the lock is dropped. To make
- *			sure not to race agains deleting/modifying a
+ *			sure not to race against deleting/modifying a
  *			currently running timer, the pointer is set to the
  *			timer, which expires at the moment. If no timer is
  *			running, the pointer is NULL.
@@ -289,7 +289,7 @@ static void timers_update_migration(void)
 }
 
 #ifdef CONFIG_SYSCTL
-static int timer_migration_handler(struct ctl_table *table, int write,
+static int timer_migration_handler(const struct ctl_table *table, int write,
 			    void *buffer, size_t *lenp, loff_t *ppos)
 {
 	int ret;
@@ -312,7 +312,6 @@ static struct ctl_table timer_sysctl[] = {
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_ONE,
 	},
-	{}
 };
 
 static int __init timer_sysctl_init(void)
@@ -366,7 +365,7 @@ static unsigned long round_jiffies_common(unsigned long j, int cpu,
 	rem = j % HZ;
 
 	/*
-	 * If the target jiffie is just after a whole second (which can happen
+	 * If the target jiffy is just after a whole second (which can happen
 	 * due to delays of the timer irq, long irq off times etc etc) then
 	 * we should round down to the whole second, not up. Use 1/4th second
 	 * as cutoff for this rounding as an extreme upper bound for this.
@@ -673,7 +672,7 @@ static void enqueue_timer(struct timer_base *base, struct timer_list *timer,
 		 * Set the next expiry time and kick the CPU so it
 		 * can reevaluate the wheel:
 		 */
-		base->next_expiry = bucket_expiry;
+		WRITE_ONCE(base->next_expiry, bucket_expiry);
 		base->timers_pending = true;
 		base->next_expiry_recalc = false;
 		trigger_dyntick_cpu(base, timer);
@@ -737,7 +736,7 @@ static bool timer_is_static_object(void *addr)
 }
 
 /*
- * fixup_init is called when:
+ * timer_fixup_init is called when:
  * - an active object is initialized
  */
 static bool timer_fixup_init(void *addr, enum debug_obj_state state)
@@ -761,7 +760,7 @@ static void stub_timer(struct timer_list *unused)
 }
 
 /*
- * fixup_activate is called when:
+ * timer_fixup_activate is called when:
  * - an active object is activated
  * - an unknown non-static object is activated
  */
@@ -783,7 +782,7 @@ static bool timer_fixup_activate(void *addr, enum debug_obj_state state)
 }
 
 /*
- * fixup_free is called when:
+ * timer_fixup_free is called when:
  * - an active object is freed
  */
 static bool timer_fixup_free(void *addr, enum debug_obj_state state)
@@ -801,7 +800,7 @@ static bool timer_fixup_free(void *addr, enum debug_obj_state state)
 }
 
 /*
- * fixup_assert_init is called when:
+ * timer_fixup_assert_init is called when:
  * - an untracked/uninit-ed object is found
  */
 static bool timer_fixup_assert_init(void *addr, enum debug_obj_state state)
@@ -914,7 +913,7 @@ static void do_init_timer(struct timer_list *timer,
  * @key: lockdep class key of the fake lock used for tracking timer
  *       sync lock dependencies
  *
- * init_timer_key() must be done to a timer prior calling *any* of the
+ * init_timer_key() must be done to a timer prior to calling *any* of the
  * other timer functions.
  */
 void init_timer_key(struct timer_list *timer,
@@ -1417,7 +1416,7 @@ static int __timer_delete(struct timer_list *timer, bool shutdown)
 	 * If @shutdown is set then the lock has to be taken whether the
 	 * timer is pending or not to protect against a concurrent rearm
 	 * which might hit between the lockless pending check and the lock
-	 * aquisition. By taking the lock it is ensured that such a newly
+	 * acquisition. By taking the lock it is ensured that such a newly
 	 * enqueued timer is dequeued and cannot end up with
 	 * timer->function == NULL in the expiry code.
 	 *
@@ -1562,6 +1561,8 @@ static inline void timer_base_unlock_expiry(struct timer_base *base)
  * the waiter to acquire the lock and make progress.
  */
 static void timer_sync_wait_running(struct timer_base *base)
+	__releases(&base->lock) __releases(&base->expiry_lock)
+	__acquires(&base->expiry_lock) __acquires(&base->lock)
 {
 	if (atomic_read(&base->timer_waiters)) {
 		raw_spin_unlock_irq(&base->lock);
@@ -1899,7 +1900,7 @@ static int next_pending_bucket(struct timer_base *base, unsigned offset,
  *
  * Store next expiry time in base->next_expiry.
  */
-static void next_expiry_recalc(struct timer_base *base)
+static void timer_recalc_next_expiry(struct timer_base *base)
 {
 	unsigned long clk, next, adj;
 	unsigned lvl, offset = 0;
@@ -1929,7 +1930,7 @@ static void next_expiry_recalc(struct timer_base *base)
 		 * bits are zero, we look at the next level as is. If not we
 		 * need to advance it by one because that's going to be the
 		 * next expiring bucket in that level. base->clk is the next
-		 * expiring jiffie. So in case of:
+		 * expiring jiffy. So in case of:
 		 *
 		 * LVL5 LVL4 LVL3 LVL2 LVL1 LVL0
 		 *  0    0    0    0    0    0
@@ -1965,7 +1966,7 @@ static void next_expiry_recalc(struct timer_base *base)
 		clk += adj;
 	}
 
-	base->next_expiry = next;
+	WRITE_ONCE(base->next_expiry, next);
 	base->next_expiry_recalc = false;
 	base->timers_pending = !(next == base->clk + NEXT_TIMER_MAX_DELTA);
 }
@@ -1994,7 +1995,7 @@ static u64 cmp_next_hrtimer_event(u64 basem, u64 expires)
 		return basem;
 
 	/*
-	 * Round up to the next jiffie. High resolution timers are
+	 * Round up to the next jiffy. High resolution timers are
 	 * off, so the hrtimers are expired in the tick and we need to
 	 * make sure that this tick really expires the timer to avoid
 	 * a ping pong of the nohz stop code.
@@ -2008,7 +2009,7 @@ static unsigned long next_timer_interrupt(struct timer_base *base,
 					  unsigned long basej)
 {
 	if (base->next_expiry_recalc)
-		next_expiry_recalc(base);
+		timer_recalc_next_expiry(base);
 
 	/*
 	 * Move next_expiry for the empty base into the future to prevent an
@@ -2019,7 +2020,7 @@ static unsigned long next_timer_interrupt(struct timer_base *base,
 	 * easy comparable to find out which base holds the first pending timer.
 	 */
 	if (!base->timers_pending)
-		base->next_expiry = basej + NEXT_TIMER_MAX_DELTA;
+		WRITE_ONCE(base->next_expiry, basej + NEXT_TIMER_MAX_DELTA);
 
 	return base->next_expiry;
 }
@@ -2253,7 +2254,7 @@ static inline u64 __get_next_timer_interrupt(unsigned long basej, u64 basem,
 					     base_global, &tevt);
 
 	/*
-	 * If the next event is only one jiffie ahead there is no need to call
+	 * If the next event is only one jiffy ahead there is no need to call
 	 * timer migration hierarchy related functions. The value for the next
 	 * global timer in @tevt struct equals then KTIME_MAX. This is also
 	 * true, when the timer base is idle.
@@ -2306,7 +2307,7 @@ static inline u64 __get_next_timer_interrupt(unsigned long basej, u64 basem,
 
 		/*
 		 * When timer base is not set idle, undo the effect of
-		 * tmigr_cpu_deactivate() to prevent inconsitent states - active
+		 * tmigr_cpu_deactivate() to prevent inconsistent states - active
 		 * timer base but inactive timer migration hierarchy.
 		 *
 		 * When timer base was already marked idle, nothing will be
@@ -2412,7 +2413,7 @@ static inline void __run_timers(struct timer_base *base)
 		 * jiffies to avoid endless requeuing to current jiffies.
 		 */
 		base->clk++;
-		next_expiry_recalc(base);
+		timer_recalc_next_expiry(base);
 
 		while (levels--)
 			expire_timers(base, heads + levels);
@@ -2441,7 +2442,7 @@ static void run_timer_base(int index)
 /*
  * This function runs timers and the timer-tq in bottom half context.
  */
-static __latent_entropy void run_timer_softirq(struct softirq_action *h)
+static __latent_entropy void run_timer_softirq(void)
 {
 	run_timer_base(BASE_LOCAL);
 	if (IS_ENABLED(CONFIG_NO_HZ_COMMON)) {
@@ -2463,8 +2464,40 @@ static void run_local_timers(void)
 	hrtimer_run_queues();
 
 	for (int i = 0; i < NR_BASES; i++, base++) {
-		/* Raise the softirq only if required. */
-		if (time_after_eq(jiffies, base->next_expiry) ||
+		/*
+		 * Raise the softirq only if required.
+		 *
+		 * timer_base::next_expiry can be written by a remote CPU while
+		 * holding the lock. If this write happens at the same time than
+		 * the lockless local read, sanity checker could complain about
+		 * data corruption.
+		 *
+		 * There are two possible situations where
+		 * timer_base::next_expiry is written by a remote CPU:
+		 *
+		 * 1. Remote CPU expires global timers of this CPU and updates
+		 * timer_base::next_expiry of BASE_GLOBAL afterwards in
+		 * next_timer_interrupt() or timer_recalc_next_expiry(). The
+		 * worst outcome is a superfluous raise of the timer softirq
+		 * when the not yet updated value is read.
+		 *
+		 * 2. A new first pinned timer is enqueued by a remote CPU
+		 * and therefore timer_base::next_expiry of BASE_LOCAL is
+		 * updated. When this update is missed, this isn't a
+		 * problem, as an IPI is executed nevertheless when the CPU
+		 * was idle before. When the CPU wasn't idle but the update
+		 * is missed, then the timer would expire one jiffy late -
+		 * bad luck.
+		 *
+		 * Those unlikely corner cases where the worst outcome is only a
+		 * one jiffy delay or a superfluous raise of the softirq are
+		 * not that expensive as doing the check always while holding
+		 * the lock.
+		 *
+		 * Possible remote writers are using WRITE_ONCE(). Local reader
+		 * uses therefore READ_ONCE().
+		 */
+		if (time_after_eq(jiffies, READ_ONCE(base->next_expiry)) ||
 		    (i == BASE_DEF && tmigr_requires_handle_remote())) {
 			raise_softirq(TIMER_SOFTIRQ);
 			return;
@@ -2488,7 +2521,7 @@ void update_process_times(int user_tick)
 	if (in_irq())
 		irq_work_tick();
 #endif
-	scheduler_tick();
+	sched_tick();
 	if (IS_ENABLED(CONFIG_POSIX_TIMERS))
 		run_posix_cpu_timers();
 }
@@ -2731,7 +2764,7 @@ void __init init_timers(void)
  */
 void msleep(unsigned int msecs)
 {
-	unsigned long timeout = msecs_to_jiffies(msecs) + 1;
+	unsigned long timeout = msecs_to_jiffies(msecs);
 
 	while (timeout)
 		timeout = schedule_timeout_uninterruptible(timeout);
@@ -2745,7 +2778,7 @@ EXPORT_SYMBOL(msleep);
  */
 unsigned long msleep_interruptible(unsigned int msecs)
 {
-	unsigned long timeout = msecs_to_jiffies(msecs) + 1;
+	unsigned long timeout = msecs_to_jiffies(msecs);
 
 	while (timeout && !signal_pending(current))
 		timeout = schedule_timeout_interruptible(timeout);

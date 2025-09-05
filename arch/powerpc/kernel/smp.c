@@ -1166,7 +1166,7 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 	cpu_smt_set_num_threads(num_threads, threads_per_core);
 }
 
-void smp_prepare_boot_cpu(void)
+void __init smp_prepare_boot_cpu(void)
 {
 	BUG_ON(smp_processor_id() != boot_cpuid);
 #ifdef CONFIG_PPC64
@@ -1567,7 +1567,7 @@ static void add_cpu_to_masks(int cpu)
 
 	/*
 	 * This CPU will not be in the online mask yet so we need to manually
-	 * add it to it's own thread sibling mask.
+	 * add it to its own thread sibling mask.
 	 */
 	map_cpu_to_node(cpu, cpu_to_node(cpu));
 	cpumask_set_cpu(cpu, cpu_sibling_mask(cpu));

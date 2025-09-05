@@ -754,6 +754,8 @@ static int gfar_of_init(struct platform_device *ofdev, struct net_device **pdev)
 		priv->device_flags |= FSL_GIANFAR_DEV_HAS_BUF_STASHING;
 
 	err = of_get_ethdev_address(np, dev);
+	if (err == -EPROBE_DEFER)
+		goto err_grp_init;
 	if (err) {
 		eth_hw_addr_random(dev);
 		dev_info(&ofdev->dev, "Using random MAC address: %pM\n", dev->dev_addr);
@@ -2026,7 +2028,7 @@ static int gfar_change_mtu(struct net_device *dev, int new_mtu)
 	if (dev->flags & IFF_UP)
 		stop_gfar(dev);
 
-	dev->mtu = new_mtu;
+	WRITE_ONCE(dev->mtu, new_mtu);
 
 	if (dev->flags & IFF_UP)
 		startup_gfar(dev);

@@ -25,19 +25,20 @@
  *	SW_OFF - SD2 is connected to SoC
  *	SW_ON  - SCIF1, SSI0, IRQ0, IRQ1 connected to SoC
  */
-#define SW_CONFIG2	SW_ON
+#define SW_CONFIG2	SW_OFF
 #define SW_CONFIG3	SW_ON
 
 / {
 	compatible = "renesas,rzg3s-smarcm", "renesas,r9a08g045s33", "renesas,r9a08g045";
 
 	aliases {
+		i2c1 = &i2c1;
 		mmc0 = &sdhi0;
 #if SW_CONFIG3 == SW_OFF
 		mmc2 = &sdhi2;
 #else
-		eth0 = &eth0;
-		eth1 = &eth1;
+		ethernet0 = &eth0;
+		ethernet1 = &eth1;
 #endif
 	};
 
@@ -148,6 +149,10 @@
 
 &extal_clk {
 	clock-frequency = <24000000>;
+};
+
+&i2c1 {
+	status = "okay";
 };
 
 #if SW_CONFIG2 == SW_ON

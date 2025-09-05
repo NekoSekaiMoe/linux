@@ -219,8 +219,8 @@ static void free_pref(struct prelim_ref *ref)
  * A -1 return indicates ref1 is a 'lower' block than ref2, while 1
  * indicates a 'higher' block.
  */
-static int prelim_ref_compare(struct prelim_ref *ref1,
-			      struct prelim_ref *ref2)
+static int prelim_ref_compare(const struct prelim_ref *ref1,
+			      const struct prelim_ref *ref2)
 {
 	if (ref1->level < ref2->level)
 		return -1;
@@ -251,7 +251,7 @@ static int prelim_ref_compare(struct prelim_ref *ref1,
 }
 
 static void update_share_count(struct share_check *sc, int oldcount,
-			       int newcount, struct prelim_ref *newref)
+			       int newcount, const struct prelim_ref *newref)
 {
 	if ((!sc) || (oldcount == 0 && newcount < 1))
 		return;
@@ -261,7 +261,7 @@ static void update_share_count(struct share_check *sc, int oldcount,
 	else if (oldcount < 1 && newcount > 0)
 		sc->share_count++;
 
-	if (newref->root_id == sc->root->root_key.objectid &&
+	if (newref->root_id == btrfs_root_id(sc->root) &&
 	    newref->wanted_disk_byte == sc->data_bytenr &&
 	    newref->key_for_search.objectid == sc->inum)
 		sc->self_ref_count += newref->count;
@@ -769,7 +769,7 @@ static int resolve_indirect_refs(struct btrfs_backref_walk_ctx *ctx,
 			continue;
 		}
 
-		if (sc && ref->root_id != sc->root->root_key.objectid) {
+		if (sc && ref->root_id != btrfs_root_id(sc->root)) {
 			free_pref(ref);
 			ret = BACKREF_FOUND_SHARED;
 			goto out;
@@ -919,40 +919,38 @@ static int add_delayed_refs(const struct btrfs_fs_info *fs_info,
 		switch (node->type) {
 		case BTRFS_TREE_BLOCK_REF_KEY: {
 			/* NORMAL INDIRECT METADATA backref */
-			struct btrfs_delayed_tree_ref *ref;
 			struct btrfs_key *key_ptr = NULL;
+			/* The owner of a tree block ref is the level. */
+			int level = btrfs_delayed_ref_owner(node);
 
 			if (head->extent_op && head->extent_op->update_key) {
 				btrfs_disk_key_to_cpu(&key, &head->extent_op->key);
 				key_ptr = &key;
 			}
 
-			ref = btrfs_delayed_node_to_tree_ref(node);
-			ret = add_indirect_ref(fs_info, preftrees, ref->root,
-					       key_ptr, ref->level + 1,
-					       node->bytenr, count, sc,
-					       GFP_ATOMIC);
+			ret = add_indirect_ref(fs_info, preftrees, node->ref_root,
+					       key_ptr, level + 1, node->bytenr,
+					       count, sc, GFP_ATOMIC);
 			break;
 		}
 		case BTRFS_SHARED_BLOCK_REF_KEY: {
-			/* SHARED DIRECT METADATA backref */
-			struct btrfs_delayed_tree_ref *ref;
+			/*
+			 * SHARED DIRECT METADATA backref
+			 *
+			 * The owner of a tree block ref is the level.
+			 */
+			int level = btrfs_delayed_ref_owner(node);
 
-			ref = btrfs_delayed_node_to_tree_ref(node);
-
-			ret = add_direct_ref(fs_info, preftrees, ref->level + 1,
-					     ref->parent, node->bytenr, count,
+			ret = add_direct_ref(fs_info, preftrees, level + 1,
+					     node->parent, node->bytenr, count,
 					     sc, GFP_ATOMIC);
 			break;
 		}
 		case BTRFS_EXTENT_DATA_REF_KEY: {
 			/* NORMAL INDIRECT DATA backref */
-			struct btrfs_delayed_data_ref *ref;
-			ref = btrfs_delayed_node_to_data_ref(node);
-
-			key.objectid = ref->objectid;
+			key.objectid = btrfs_delayed_ref_owner(node);
 			key.type = BTRFS_EXTENT_DATA_KEY;
-			key.offset = ref->offset;
+			key.offset = btrfs_delayed_ref_offset(node);
 
 			/*
 			 * If we have a share check context and a reference for
@@ -972,18 +970,14 @@ static int add_delayed_refs(const struct btrfs_fs_info *fs_info,
 			if (sc && count < 0)
 				sc->have_delayed_delete_refs = true;
 
-			ret = add_indirect_ref(fs_info, preftrees, ref->root,
+			ret = add_indirect_ref(fs_info, preftrees, node->ref_root,
 					       &key, 0, node->bytenr, count, sc,
 					       GFP_ATOMIC);
 			break;
 		}
 		case BTRFS_SHARED_DATA_REF_KEY: {
 			/* SHARED DIRECT FULL backref */
-			struct btrfs_delayed_data_ref *ref;
-
-			ref = btrfs_delayed_node_to_data_ref(node);
-
-			ret = add_direct_ref(fs_info, preftrees, 0, ref->parent,
+			ret = add_direct_ref(fs_info, preftrees, 0, node->parent,
 					     node->bytenr, count, sc,
 					     GFP_ATOMIC);
 			break;
@@ -2629,7 +2623,7 @@ static int iterate_inode_refs(u64 inum, struct inode_fs_paths *ipath)
 			btrfs_debug(fs_root->fs_info,
 				"following ref at offset %u for inode %llu in tree %llu",
 				cur, found_key.objectid,
-				fs_root->root_key.objectid);
+				btrfs_root_id(fs_root));
 			ret = inode_to_path(parent, name_len,
 				      (unsigned long)(iref + 1), eb, ipath);
 			if (ret)
@@ -2776,20 +2770,14 @@ struct btrfs_data_container *init_data_container(u32 total_bytes)
 	size_t alloc_bytes;
 
 	alloc_bytes = max_t(size_t, total_bytes, sizeof(*data));
-	data = kvmalloc(alloc_bytes, GFP_KERNEL);
+	data = kvzalloc(alloc_bytes, GFP_KERNEL);
 	if (!data)
 		return ERR_PTR(-ENOMEM);
 
-	if (total_bytes >= sizeof(*data)) {
+	if (total_bytes >= sizeof(*data))
 		data->bytes_left = total_bytes - sizeof(*data);
-		data->bytes_missing = 0;
-	} else {
+	else
 		data->bytes_missing = sizeof(*data) - total_bytes;
-		data->bytes_left = 0;
-	}
-
-	data->elem_cnt = 0;
-	data->elem_missed = 0;
 
 	return data;
 }
@@ -3191,10 +3179,14 @@ void btrfs_backref_release_cache(struct btrfs_backref_cache *cache)
 		btrfs_backref_cleanup_node(cache, node);
 	}
 
-	cache->last_trans = 0;
-
-	for (i = 0; i < BTRFS_MAX_LEVEL; i++)
-		ASSERT(list_empty(&cache->pending[i]));
+	for (i = 0; i < BTRFS_MAX_LEVEL; i++) {
+		while (!list_empty(&cache->pending[i])) {
+			node = list_first_entry(&cache->pending[i],
+						struct btrfs_backref_node,
+						list);
+			btrfs_backref_cleanup_node(cache, node);
+		}
+	}
 	ASSERT(list_empty(&cache->pending_edge));
 	ASSERT(list_empty(&cache->useless_node));
 	ASSERT(list_empty(&cache->changed));
@@ -3367,7 +3359,7 @@ static int handle_indirect_tree_backref(struct btrfs_trans_handle *trans,
 	if (btrfs_node_blockptr(eb, path->slots[level]) != cur->bytenr) {
 		btrfs_err(fs_info,
 "couldn't find block (%llu) (level %d) in tree (%llu) with key (%llu %u %llu)",
-			  cur->bytenr, level - 1, root->root_key.objectid,
+			  cur->bytenr, level - 1, btrfs_root_id(root),
 			  tree_key->objectid, tree_key->type, tree_key->offset);
 		btrfs_put_root(root);
 		ret = -ENOENT;

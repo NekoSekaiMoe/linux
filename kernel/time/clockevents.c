@@ -190,7 +190,7 @@ int clockevents_tick_resume(struct clock_event_device *dev)
 
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_MIN_ADJUST
 
-/* Limit min_delta to a jiffie */
+/* Limit min_delta to a jiffy */
 #define MIN_DELTA_LIMIT		(NSEC_PER_SEC / HZ)
 
 /**
@@ -677,7 +677,7 @@ static ssize_t current_device_show(struct device *dev,
 	raw_spin_lock_irq(&clockevents_lock);
 	td = tick_get_tick_dev(dev);
 	if (td && td->evtdev)
-		count = snprintf(buf, PAGE_SIZE, "%s\n", td->evtdev->name);
+		count = sysfs_emit(buf, "%s\n", td->evtdev->name);
 	raw_spin_unlock_irq(&clockevents_lock);
 	return count;
 }

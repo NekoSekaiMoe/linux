@@ -124,7 +124,6 @@ struct idxd_pmu {
 
 	struct pmu pmu;
 	char name[IDXD_NAME_SIZE];
-	int cpu;
 
 	int n_counters;
 	int counter_width;
@@ -135,8 +134,6 @@ struct idxd_pmu {
 
 	unsigned long supported_filters;
 	int n_filters;
-
-	struct hlist_node cpuhp_node;
 };
 
 #define IDXD_MAX_PRIORITY	0xf
@@ -288,12 +285,13 @@ struct idxd_driver_data {
 	int evl_cr_off;
 	int cr_status_off;
 	int cr_result_off;
+	bool user_submission_safe;
 	load_device_defaults_fn_t load_device_defaults;
 };
 
 struct idxd_evl {
 	/* Lock to protect event log access. */
-	spinlock_t lock;
+	struct mutex lock;
 	void *log;
 	dma_addr_t dma;
 	/* Total size of event log = number of entries * entry size. */
@@ -374,6 +372,8 @@ struct idxd_device {
 
 	struct dentry *dbgfs_dir;
 	struct dentry *dbgfs_evl_file;
+
+	bool user_submission_safe;
 };
 
 static inline unsigned int evl_ent_size(struct idxd_device *idxd)
@@ -800,14 +800,10 @@ void idxd_user_counter_increment(struct idxd_wq *wq, u32 pasid, int index);
 int perfmon_pmu_init(struct idxd_device *idxd);
 void perfmon_pmu_remove(struct idxd_device *idxd);
 void perfmon_counter_overflow(struct idxd_device *idxd);
-void perfmon_init(void);
-void perfmon_exit(void);
 #else
 static inline int perfmon_pmu_init(struct idxd_device *idxd) { return 0; }
 static inline void perfmon_pmu_remove(struct idxd_device *idxd) {}
 static inline void perfmon_counter_overflow(struct idxd_device *idxd) {}
-static inline void perfmon_init(void) {}
-static inline void perfmon_exit(void) {}
 #endif
 
 /* debugfs */
