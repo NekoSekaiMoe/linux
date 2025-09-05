@@ -504,9 +504,9 @@ int goodix_read_cfg_bin(struct device *dev, struct goodix_cfg_bin *cfg_bin)
 	}
 	/*get cfg_bin_name*/
 	if (ts_bdata->cfg_bin_name)
-		strlcpy(cfg_bin_name, ts_bdata->cfg_bin_name, sizeof(cfg_bin_name));
+		strscpy(cfg_bin_name, ts_bdata->cfg_bin_name, sizeof(cfg_bin_name));
 	else
-		strlcpy(cfg_bin_name, TS_DEFAULT_CFG_BIN, sizeof(cfg_bin_name));
+		strscpy(cfg_bin_name, TS_DEFAULT_CFG_BIN, sizeof(cfg_bin_name));
 	ts_info("ts_bdata->cfg_bin_name:%s", ts_bdata->cfg_bin_name);
 	ts_info("cfg_bin_name:%s", cfg_bin_name);
 	for (i = 0; i < TS_RQST_FW_RETRY_TIMES; i++) {

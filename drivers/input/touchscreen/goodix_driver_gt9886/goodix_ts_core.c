@@ -2529,7 +2529,7 @@ out:
 	return r;
 }
 
-static int goodix_ts_remove(struct platform_device *pdev)
+static void goodix_ts_remove(struct platform_device *pdev)
 {
 	struct goodix_ts_core *core_data = platform_get_drvdata(pdev);
 /* #ifdef CONFIG_DRM
@@ -2540,7 +2540,7 @@ static int goodix_ts_remove(struct platform_device *pdev)
 	goodix_ts_power_off(core_data);
 	goodix_debugfs_exit();
 	goodix_ts_sysfs_exit(core_data);
-	return 0;
+	return;
 }
 
 #ifdef CONFIG_PM

@@ -1269,10 +1269,10 @@ static int goodix_fw_update_init(struct goodix_ts_core *core_data,
 
 	/* find a valid firmware image name */
 	if (ts_bdata && ts_bdata->fw_name) {
-		strlcpy(fwu_ctrl->fw_name, ts_bdata->fw_name, sizeof(fwu_ctrl->fw_name));
+		strscpy(fwu_ctrl->fw_name, ts_bdata->fw_name, sizeof(fwu_ctrl->fw_name));
 		ts_info("find goodix firmware:%s\n", ts_bdata->fw_name);
 	} else{
-		strlcpy(fwu_ctrl->fw_name, TS_DEFAULT_FIRMWARE, sizeof(fwu_ctrl->fw_name));
+		strscpy(fwu_ctrl->fw_name, TS_DEFAULT_FIRMWARE, sizeof(fwu_ctrl->fw_name));
 		ts_info("can't find goodix firmware,use default name\n");
 	}
 

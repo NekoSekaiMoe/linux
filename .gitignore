@@ -165,6 +165,7 @@ x509.genkey
 
 # Kconfig savedefconfig output
 /defconfig
+out
 
 # Kdevelop4
 *.kdev4
