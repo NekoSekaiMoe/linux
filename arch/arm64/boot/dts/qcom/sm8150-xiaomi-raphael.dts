@@ -524,18 +524,18 @@
 		goodix,panel-max-fod = <127>;
 		goodix,power-on-delay-us = <300000>; /*300ms*/
 		goodix,power-off-delay-us = <5000>;
-		goodix,cfg-name = "qcom/sm8150/Xiaomi/raphael/goodix_gt9886_cfg_f11.bin";
+		goodix,cfg-name = "goodix_gt9886_cfg_f11.bin";
 		normal-cfg = [
 				];
 		sensor0 {
-				goodix,limit-name = "goodix_gt9886_limit_f11_first.tporder";
-				goodix,fw-name = "qcom/sm8150/Xiaomi/raphael/goodix_gt9886_fw_f11.bin";
+				goodix,limit-name = "goodix_gt9886_limit_f11_second.tporder";
+				goodix,fw-name = "goodix_gt9886_fw_f11.bin";
 				goodix,x2x;
 				goodix,y2y;
 		};
 		sensor1 {
-				goodix,limit-name = "goodix_gt9886_limit_f11_second.tporder";
-				goodix,fw-name = "qcom/sm8150/Xiaomi/raphael/goodix_gt9886_fw_f11.bin";
+				goodix,limit-name = "goodix_gt9886_limit_f11_first.tporder";
+				goodix,fw-name = "goodix_gt9886_fw_f11.bin";
 		};
 	};
 };
@@ -669,7 +669,7 @@
 
 &remoteproc_adsp {
 	status = "okay";
-	firmware-name = "qcom/sm8150/Xiaomi/raphael/adsp.mbn";
+	firmware-name = "adsp.mbn";
 };
 
 &remoteproc_cdsp {
@@ -679,7 +679,7 @@
 
 &remoteproc_mpss {
 	status = "okay";
-	firmware-name = "qcom/sm8150/Xiaomi/raphael/modem.mbn";
+	firmware-name = "modem.mbn";
 };
 
 &remoteproc_slpi {
