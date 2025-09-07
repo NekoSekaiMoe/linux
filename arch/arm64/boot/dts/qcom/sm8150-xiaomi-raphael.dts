@@ -679,7 +679,7 @@
 
 &remoteproc_mpss {
 	status = "okay";
-	firmware-name = "qcom/sm8150/Xiaomi/raphael/modem.mbn";
+	firmware-name = "qcom/sm8150/Xiaomi/raphael/wcnss.mbn";
 };
 
 &remoteproc_slpi {
