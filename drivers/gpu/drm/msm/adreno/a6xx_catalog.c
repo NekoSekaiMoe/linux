@@ -1042,16 +1042,16 @@ static const struct adreno_info a6xx_gpus[] = {
 };
 DECLARE_ADRENO_GPULIST(a6xx);
 
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a615_zap.mbn");
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a619_gmu.bin");
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a630_sqe.fw");
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a630_gmu.bin");
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a630_zap.mbn");
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a640_gmu.bin");
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a650_gmu.bin");
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a650_sqe.fw");
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a660_gmu.bin");
-MODULE_FIRMWARE("qcom/sm8150/Xiaomi/raphael/a660_sqe.fw");
+MODULE_FIRMWARE("qcom/a615_zap.mbn");
+MODULE_FIRMWARE("qcom/a619_gmu.bin");
+MODULE_FIRMWARE("qcom/a630_sqe.fw");
+MODULE_FIRMWARE("qcom/a630_gmu.bin");
+MODULE_FIRMWARE("qcom/a630_zap.mbn");
+MODULE_FIRMWARE("qcom/a640_gmu.bin");
+MODULE_FIRMWARE("qcom/a650_gmu.bin");
+MODULE_FIRMWARE("qcom/a650_sqe.fw");
+MODULE_FIRMWARE("qcom/a660_gmu.bin");
+MODULE_FIRMWARE("qcom/a660_sqe.fw");
 
 static const struct adreno_reglist a702_hwcg[] = {
 	{ REG_A6XX_RBBM_CLOCK_CNTL_SP0, 0x22222222 },
