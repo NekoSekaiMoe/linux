@@ -864,10 +864,6 @@ config VIDEO_DW9800
 	  capability. This is designed for linear control of
 	  voice coil motors, controlled via I2C serial interface.
 
-endmenu
-
-endif
-
 menu "Flash devices"
 	visible if MEDIA_CAMERA_SUPPORT
 
@@ -901,6 +897,8 @@ config VIDEO_LM3646
 	  flash, torch LEDs.
 
 endmenu
+
+endif
 
 #
 # V4L2 I2C drivers that aren't related with Camera support
